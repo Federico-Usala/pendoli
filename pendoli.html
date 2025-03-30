@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Simulazione Pendoli Accoppiati</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #f2f2f2; padding: 20px; }
+    input, button { padding: 8px; margin: 5px; width: 100%; }
+    #plots { margin-top: 20px; }
+    .plot { margin-bottom: 50px; }
+  </style>
+</head>
+<body>
+  <h1>Simulazione Pendoli Accoppiati</h1>
+
+  <div>
+    <label>Angolo iniziale Pendolo 1 (gradi): <input id="theta1" type="number" value="10"></label>
+    <label>Angolo iniziale Pendolo 2 (gradi): <input id="theta2" type="number" value="5"></label>
+    <label>Lunghezza del pendolo (m): <input id="L" type="number" value="1"></label>
+    <label>Costante elastica molla (N/m): <input id="k" type="number" value="0.5"></label>
+    <label>Distanza molla-fulcro (m): <input id="l_molla" type="number" value="0.5"></label>
+    <label>Massa (kg): <input id="m" type="number" value="1"></label>
+    <label>Attrito viscoso b: <input id="b" type="number" value="0.05"></label>
+    <label>Tempo totale (s): <input id="T" type="number" value="30"></label>
+    <button onclick="simulate()">Avvia simulazione</button>
+  </div>
+
+  <div id="plots">
+    <div id="anglePlot" class="plot"></div>
+    <div id="fftPlot" class="plot"></div>
+  </div>
+
+<script>
+function simulate() {
+  const deg2rad = Math.PI / 180;
+  let theta1_0 = parseFloat(document.getElementById("theta1").value) * deg2rad;
+  let theta2_0 = parseFloat(document.getElementById("theta2").value) * deg2rad;
+  let L = parseFloat(document.getElementById("L").value);
+  let k = parseFloat(document.getElementById("k").value);
+  let l_molla = parseFloat(document.getElementById("l_molla").value);
+  let m = parseFloat(document.getElementById("m").value);
+  let b = parseFloat(document.getElementById("b").value);
+  let T = parseFloat(document.getElementById("T").value);
+  
+  const g = 9.81;
+  const dt = 0.01;
+  const N = Math.floor(T / dt);
+  const I = m * L * L;
+
+  let theta1 = new Array(N).fill(0);
+  let theta2 = new Array(N).fill(0);
+  let omega1 = new Array(N).fill(0);
+  let omega2 = new Array(N).fill(0);
+  let t = new Array(N);
+
+  theta1[0] = theta1_0;
+  theta2[0] = theta2_0;
+  t[0] = 0;
+
+  function f(th1, th2, om1, om2) {
+    let torque = k * l_molla * l_molla * (th2 - th1);
+    let domega1 = (-m * g * L * Math.sin(th1) - torque - b * om1) / I;
+    let domega2 = (-m * g * L * Math.sin(th2) + torque - b * om2) / I;
+    return [om1, om2, domega1, domega2];
+  }
+
+  function rk4(th1, th2, om1, om2) {
+    let k1 = f(th1, th2, om1, om2);
+    let k2 = f(th1 + dt/2*k1[0], th2 + dt/2*k1[1], om1 + dt/2*k1[2], om2 + dt/2*k1[3]);
+    let k3 = f(th1 + dt/2*k2[0], th2 + dt/2*k2[1], om1 + dt/2*k2[2], om2 + dt/2*k2[3]);
+    let k4 = f(th1 + dt*k3[0], th2 + dt*k3[1], om1 + dt*k3[2], om2 + dt*k3[3]);
+    return [
+      (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]) * dt / 6,
+      (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]) * dt / 6,
+      (k1[2] + 2*k2[2] + 2*k3[2] + k4[2]) * dt / 6,
+      (k1[3] + 2*k2[3] + 2*k3[3] + k4[3]) * dt / 6
+    ];
+  }
+
+  for (let i = 0; i < N - 1; i++) {
+    let [dth1, dth2, dom1, dom2] = rk4(theta1[i], theta2[i], omega1[i], omega2[i]);
+    theta1[i+1] = theta1[i] + dth1;
+    theta2[i+1] = theta2[i] + dth2;
+    omega1[i+1] = omega1[i] + dom1;
+    omega2[i+1] = omega2[i] + dom2;
+    t[i+1] = t[i] + dt;
+  }
+
+  Plotly.newPlot("anglePlot", [
+    { x: t, y: theta1, name: "Pendolo 1" },
+    { x: t, y: theta2, name: "Pendolo 2" }
+  ], { title: "Angoli vs Tempo", xaxis: { title: "Tempo (s)" }, yaxis: { title: "Angolo (rad)" } });
+
+  // FFT con JS: semplificata (solo ampiezze)
+  let fft = theta1.map((v, i) => [v * Math.cos(2 * Math.PI * i / N), v * Math.sin(2 * Math.PI * i / N)]);
+  let amplitudes = fft.map(([re, im]) => Math.sqrt(re*re + im*im));
+  let freqs = t.map((_, i) => i / T);
+  
+  Plotly.newPlot("fftPlot", [
+    { x: freqs.slice(0, N/2), y: amplitudes.slice(0, N/2), name: "Spettro FFT" }
+  ], { title: "Spettro di Fourier", xaxis: { title: "Frequenza (Hz)" }, yaxis: { title: "Ampiezza" } });
+}
+</script>
+
+</body>
+</html>
